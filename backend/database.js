@@ -2,7 +2,8 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 // Create database file path
-const dbPath = path.join(__dirname, 'database', 'hiring_platform.db');
+// Use /tmp for Render's free tier (writable location)
+const dbPath = process.env.DATABASE_PATH || path.join(__dirname, 'database', 'hiring_platform.db');
 
 // Create/connect to database
 const db = new sqlite3.Database(dbPath, (err) => {
