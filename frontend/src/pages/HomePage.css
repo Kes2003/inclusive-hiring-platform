@@ -1,0 +1,121 @@
+/* Home Page Styles */
+.home-page {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.app-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 2rem;
+    text-align: center;
+}
+
+.app-header h1 {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.app-header p {
+    font-size: 1.2rem;
+    opacity: 0.9;
+}
+
+.home-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1rem;
+    background-color: #f7fafc;
+}
+
+.home-container h2 {
+    font-size: 1.8rem;
+    color: #2d3748;
+    margin-bottom: 3rem;
+    text-align: center;
+}
+
+.button-container {
+    display: flex;
+    gap: 2rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 900px;
+}
+
+.user-type-button {
+    background: white;
+    border: 3px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 2rem;
+    width: 300px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.user-type-button:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+    border-color: #667eea;
+}
+
+.user-type-button:focus {
+    outline: 3px solid #667eea;
+    outline-offset: 3px;
+}
+
+.button-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+}
+
+.button-content h3 {
+    font-size: 1.5rem;
+    color: #2d3748;
+    margin-bottom: 0.5rem;
+}
+
+.button-content p {
+    font-size: 1rem;
+    color: #718096;
+}
+
+.app-footer {
+    background-color: #2d3748;
+    color: white;
+    text-align: center;
+    padding: 1.5rem;
+    margin-top: auto;
+}
+
+@media (max-width: 768px) {
+    .app-header h1 {
+        font-size: 2rem;
+    }
+
+    .home-container h2 {
+        font-size: 1.5rem;
+    }
+
+    .button-container {
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .user-type-button {
+        width: 100%;
+        max-width: 350px;
+    }
+}
