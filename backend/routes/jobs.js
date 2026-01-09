@@ -1,153 +1,144 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../database');
+const db = require('../database-pg');
 
-// GET ALL JOBS (for job seekers to browse)
-router.get('/', (req, res) => {
-    const query = `
-    SELECT 
-      jobs.*,
-      employers.company_name,
-      employers.full_name as employer_name
-    FROM jobs
-    JOIN employers ON jobs.employer_id = employers.id
-    WHERE jobs.status = 'Active'
-    ORDER BY jobs.created_at DESC
-  `;
+// GET ALL JOBS
+router.get('/', async (req, res) => {
+    try {
+        const result = await db.query(`
+      SELECT 
+        jobs.*,
+        employers.company_name
+      FROM jobs
+      JOIN employers ON jobs.employer_id = employers.id
+      WHERE jobs.status = 'Active'
+      ORDER BY jobs.created_at DESC
+    `);
 
-    db.all(query, [], (err, jobs) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        res.json({ jobs });
-    });
+        res.json({ jobs: result.rows });
+    } catch (error) {
+        console.error('Error fetching jobs:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
-// GET SINGLE JOB BY ID
-router.get('/:jobId', (req, res) => {
+// GET SINGLE JOB
+router.get('/:jobId', async (req, res) => {
     const { jobId } = req.params;
 
-    const query = `
-    SELECT 
-      jobs.*,
-      employers.company_name,
-      employers.full_name as employer_name,
-      employers.industry
-    FROM jobs
-    JOIN employers ON jobs.employer_id = employers.id
-    WHERE jobs.id = ?
-  `;
+    try {
+        const result = await db.query(`
+      SELECT 
+        jobs.*,
+        employers.company_name
+      FROM jobs
+      JOIN employers ON jobs.employer_id = employers.id
+      WHERE jobs.id = $1
+    `, [jobId]);
 
-    db.get(query, [jobId], (err, job) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-
-        if (!job) {
+        if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Job not found' });
         }
 
-        res.json({ job });
-    });
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Error fetching job:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
-// POST NEW JOB (for employers)
-router.post('/', (req, res) => {
+// POST NEW JOB
+router.post('/', async (req, res) => {
     const { employerId, title, location, jobType, salary, description, accessibility } = req.body;
 
-    // Validate required fields
     if (!employerId || !title || !location || !jobType || !description || !accessibility) {
-        return res.status(400).json({ error: 'All fields are required' });
+        return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const query = `
-    INSERT INTO jobs (employer_id, title, location, job_type, salary, description, accessibility_features)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `;
+    try {
+        const result = await db.query(`
+      INSERT INTO jobs (employer_id, title, location, job_type, salary, description, accessibility_features)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *
+    `, [employerId, title, location, jobType, salary || '', description, accessibility]);
 
-    db.run(
-        query,
-        [employerId, title, location, jobType, salary, description, accessibility],
-        function (err) {
-            if (err) {
-                return res.status(500).json({ error: err.message });
-            }
-
-            res.status(201).json({
-                message: 'Job posted successfully!',
-                jobId: this.lastID
-            });
-        }
-    );
+        res.status(201).json({
+            message: 'Job posted successfully!',
+            job: result.rows[0]
+        });
+    } catch (error) {
+        console.error('Error posting job:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
-// GET JOBS BY EMPLOYER (for employer dashboard)
-router.get('/employer/:employerId', (req, res) => {
+// GET EMPLOYER'S JOBS
+router.get('/employer/:employerId', async (req, res) => {
     const { employerId } = req.params;
 
-    const query = `
-    SELECT 
-      jobs.*,
-      COUNT(applications.id) as applicant_count
-    FROM jobs
-    LEFT JOIN applications ON jobs.id = applications.job_id
-    WHERE jobs.employer_id = ?
-    GROUP BY jobs.id
-    ORDER BY jobs.created_at DESC
-  `;
+    try {
+        const result = await db.query(`
+      SELECT 
+        jobs.*,
+        COUNT(applications.id) as applicant_count
+      FROM jobs
+      LEFT JOIN applications ON jobs.id = applications.job_id
+      WHERE jobs.employer_id = $1
+      GROUP BY jobs.id
+      ORDER BY jobs.created_at DESC
+    `, [employerId]);
 
-    db.all(query, [employerId], (err, jobs) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        res.json({ jobs });
-    });
+        res.json({ jobs: result.rows });
+    } catch (error) {
+        console.error('Error fetching employer jobs:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // UPDATE JOB
-router.put('/:jobId', (req, res) => {
+router.put('/:jobId', async (req, res) => {
     const { jobId } = req.params;
     const { title, location, jobType, salary, description, accessibility, status } = req.body;
 
-    const query = `
-    UPDATE jobs 
-    SET title = ?, location = ?, job_type = ?, salary = ?, 
-        description = ?, accessibility_features = ?, status = ?
-    WHERE id = ?
-  `;
+    try {
+        const result = await db.query(`
+      UPDATE jobs
+      SET title = $1, location = $2, job_type = $3, salary = $4, 
+          description = $5, accessibility_features = $6, status = $7
+      WHERE id = $8
+      RETURNING *
+    `, [title, location, jobType, salary, description, accessibility, status || 'Active', jobId]);
 
-    db.run(
-        query,
-        [title, location, jobType, salary, description, accessibility, status, jobId],
-        function (err) {
-            if (err) {
-                return res.status(500).json({ error: err.message });
-            }
-
-            if (this.changes === 0) {
-                return res.status(404).json({ error: 'Job not found' });
-            }
-
-            res.json({ message: 'Job updated successfully!' });
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Job not found' });
         }
-    );
+
+        res.json({
+            message: 'Job updated successfully!',
+            job: result.rows[0]
+        });
+    } catch (error) {
+        console.error('Error updating job:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // DELETE JOB
-router.delete('/:jobId', (req, res) => {
+router.delete('/:jobId', async (req, res) => {
     const { jobId } = req.params;
 
-    db.run('DELETE FROM jobs WHERE id = ?', [jobId], function (err) {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
+    try {
+        const result = await db.query('DELETE FROM jobs WHERE id = $1 RETURNING *', [jobId]);
 
-        if (this.changes === 0) {
+        if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Job not found' });
         }
 
         res.json({ message: 'Job deleted successfully!' });
-    });
+    } catch (error) {
+        console.error('Error deleting job:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 module.exports = router;

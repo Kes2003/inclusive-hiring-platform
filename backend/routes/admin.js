@@ -1,155 +1,162 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../database');
+const db = require('../database-pg');
 
 // GET ALL USERS
-router.get('/users', (req, res) => {
-    const query = `
-    SELECT 
-      users.id,
-      users.email,
-      users.user_type,
-      users.created_at,
-      CASE 
-        WHEN users.user_type = 'Job Seeker' THEN job_seekers.full_name
-        WHEN users.user_type = 'Employer' THEN employers.full_name
-        ELSE 'Admin'
-      END as name,
-      CASE 
-        WHEN users.user_type = 'Employer' THEN employers.company_name
-        ELSE NULL
-      END as company_name
-    FROM users
-    LEFT JOIN job_seekers ON users.id = job_seekers.user_id
-    LEFT JOIN employers ON users.id = employers.user_id
-    ORDER BY users.created_at DESC
-  `;
+router.get('/users', async (req, res) => {
+    try {
+        const result = await db.query(`
+      SELECT 
+        users.id,
+        users.email,
+        users.user_type,
+        users.created_at,
+        CASE 
+          WHEN users.user_type = 'Job Seeker' THEN job_seekers.full_name
+          WHEN users.user_type = 'Employer' THEN employers.full_name
+          ELSE 'Admin'
+        END as name,
+        CASE 
+          WHEN users.user_type = 'Employer' THEN employers.company_name
+          ELSE NULL
+        END as company_name
+      FROM users
+      LEFT JOIN job_seekers ON users.id = job_seekers.user_id
+      LEFT JOIN employers ON users.id = employers.user_id
+      ORDER BY users.created_at DESC
+    `);
 
-    db.all(query, [], (err, users) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        res.json({ users });
-    });
+        res.json({ users: result.rows });
+    } catch (error) {
+        console.error('Error fetching users:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
-// GET ALL JOBS (for admin overview)
-router.get('/jobs', (req, res) => {
-    const query = `
-    SELECT 
-      jobs.*,
-      employers.company_name,
-      employers.full_name as employer_name,
-      COUNT(applications.id) as applicant_count
-    FROM jobs
-    JOIN employers ON jobs.employer_id = employers.id
-    LEFT JOIN applications ON jobs.id = applications.job_id
-    GROUP BY jobs.id
-    ORDER BY jobs.created_at DESC
-  `;
+// GET ALL JOBS (ADMIN)
+router.get('/jobs', async (req, res) => {
+    try {
+        const result = await db.query(`
+      SELECT 
+        jobs.*,
+        employers.company_name,
+        employers.full_name as employer_name,
+        COUNT(applications.id) as applicant_count
+      FROM jobs
+      JOIN employers ON jobs.employer_id = employers.id
+      LEFT JOIN applications ON jobs.id = applications.job_id
+      GROUP BY jobs.id, employers.company_name, employers.full_name
+      ORDER BY jobs.created_at DESC
+    `);
 
-    db.all(query, [], (err, jobs) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        res.json({ jobs });
-    });
+        res.json({ jobs: result.rows });
+    } catch (error) {
+        console.error('Error fetching jobs:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // GET PLATFORM STATISTICS
-router.get('/stats', (req, res) => {
-    // Get counts for different entities
-    const queries = {
-        totalUsers: 'SELECT COUNT(*) as count FROM users',
-        jobSeekers: "SELECT COUNT(*) as count FROM users WHERE user_type = 'Job Seeker'",
-        employers: "SELECT COUNT(*) as count FROM users WHERE user_type = 'Employer'",
-        totalJobs: 'SELECT COUNT(*) as count FROM jobs',
-        activeJobs: "SELECT COUNT(*) as count FROM jobs WHERE status = 'Active'",
-        totalApplications: 'SELECT COUNT(*) as count FROM applications',
-        pendingApplications: "SELECT COUNT(*) as count FROM applications WHERE status = 'Pending'",
-        acceptedApplications: "SELECT COUNT(*) as count FROM applications WHERE status = 'Accepted'",
-        rejectedApplications: "SELECT COUNT(*) as count FROM applications WHERE status = 'Rejected'"
-    };
+router.get('/stats', async (req, res) => {
+    try {
+        const stats = {};
 
-    const stats = {};
-    let completed = 0;
-    const total = Object.keys(queries).length;
+        const totalUsers = await db.query('SELECT COUNT(*) FROM users');
+        stats.totalUsers = parseInt(totalUsers.rows[0].count);
 
-    Object.keys(queries).forEach(key => {
-        db.get(queries[key], [], (err, result) => {
-            if (err) {
-                return res.status(500).json({ error: err.message });
-            }
-            stats[key] = result.count;
-            completed++;
+        const jobSeekers = await db.query("SELECT COUNT(*) FROM users WHERE user_type = 'Job Seeker'");
+        stats.jobSeekers = parseInt(jobSeekers.rows[0].count);
 
-            if (completed === total) {
-                res.json({ stats });
-            }
-        });
-    });
+        const employers = await db.query("SELECT COUNT(*) FROM users WHERE user_type = 'Employer'");
+        stats.employers = parseInt(employers.rows[0].count);
+
+        const totalJobs = await db.query('SELECT COUNT(*) FROM jobs');
+        stats.totalJobs = parseInt(totalJobs.rows[0].count);
+
+        const activeJobs = await db.query("SELECT COUNT(*) FROM jobs WHERE status = 'Active'");
+        stats.activeJobs = parseInt(activeJobs.rows[0].count);
+
+        const totalApplications = await db.query('SELECT COUNT(*) FROM applications');
+        stats.totalApplications = parseInt(totalApplications.rows[0].count);
+
+        const pendingApplications = await db.query("SELECT COUNT(*) FROM applications WHERE status = 'Pending'");
+        stats.pendingApplications = parseInt(pendingApplications.rows[0].count);
+
+        const acceptedApplications = await db.query("SELECT COUNT(*) FROM applications WHERE status = 'Accepted'");
+        stats.acceptedApplications = parseInt(acceptedApplications.rows[0].count);
+
+        const rejectedApplications = await db.query("SELECT COUNT(*) FROM applications WHERE status = 'Rejected'");
+        stats.rejectedApplications = parseInt(rejectedApplications.rows[0].count);
+
+        res.json({ stats });
+    } catch (error) {
+        console.error('Error fetching stats:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // DELETE USER
-router.delete('/users/:userId', (req, res) => {
+router.delete('/users/:userId', async (req, res) => {
     const { userId } = req.params;
 
-    db.run('DELETE FROM users WHERE id = ?', [userId], function (err) {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
+    try {
+        const result = await db.query('DELETE FROM users WHERE id = $1 RETURNING *', [userId]);
 
-        if (this.changes === 0) {
+        if (result.rows.length === 0) {
             return res.status(404).json({ error: 'User not found' });
         }
 
         res.json({ message: 'User deleted successfully!' });
-    });
+    } catch (error) {
+        console.error('Error deleting user:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // DELETE JOB
-router.delete('/jobs/:jobId', (req, res) => {
+router.delete('/jobs/:jobId', async (req, res) => {
     const { jobId } = req.params;
 
-    db.run('DELETE FROM jobs WHERE id = ?', [jobId], function (err) {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
+    try {
+        const result = await db.query('DELETE FROM jobs WHERE id = $1 RETURNING *', [jobId]);
 
-        if (this.changes === 0) {
+        if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Job not found' });
         }
 
         res.json({ message: 'Job deleted successfully!' });
-    });
+    } catch (error) {
+        console.error('Error deleting job:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
-// GET RECENT ACTIVITY (for activity feed)
-router.get('/activity', (req, res) => {
-    const query = `
-    SELECT 
-      'application' as type,
-      applications.id,
-      applications.applied_at as timestamp,
-      job_seekers.full_name as user_name,
-      jobs.title as job_title,
-      employers.company_name
-    FROM applications
-    JOIN job_seekers ON applications.job_seeker_id = job_seekers.id
-    JOIN jobs ON applications.job_id = jobs.id
-    JOIN employers ON jobs.employer_id = employers.id
-    ORDER BY applications.applied_at DESC
-    LIMIT 10
-  `;
+// GET RECENT ACTIVITY
+router.get('/activity', async (req, res) => {
+    try {
+        const result = await db.query(`
+      SELECT 
+        applications.id,
+        applications.applied_at as timestamp,
+        job_seekers.full_name as user_name,
+        jobs.title as job_title,
+        employers.company_name
+      FROM applications
+      JOIN job_seekers ON applications.job_seeker_id = job_seekers.id
+      JOIN jobs ON applications.job_id = jobs.id
+      JOIN employers ON jobs.employer_id = employers.id
+      ORDER BY applications.applied_at DESC
+      LIMIT 10
+    `);
 
-    db.all(query, [], (err, activities) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        res.json({ activities });
-    });
+        res.json({ activities: result.rows });
+    } catch (error) {
+        console.error('Error fetching activity:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
-// CREATE NEW ADMIN (only accessible by existing admins)
+
+// CREATE ADMIN
 router.post('/create-admin', async (req, res) => {
     const { email, password, fullName } = req.body;
 
@@ -159,45 +166,36 @@ router.post('/create-admin', async (req, res) => {
 
     try {
         const bcrypt = require('bcrypt');
-
-        // Hash the password
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Insert into users table
-        db.run(
-            'INSERT INTO users (email, password, user_type) VALUES (?, ?, ?)',
-            [email, hashedPassword, 'Admin'],
-            function (err) {
-                if (err) {
-                    if (err.message.includes('UNIQUE constraint failed')) {
-                        return res.status(400).json({ error: 'Email already exists' });
-                    }
-                    return res.status(500).json({ error: err.message });
-                }
-
-                res.status(201).json({
-                    message: 'Admin created successfully!',
-                    adminId: this.lastID
-                });
-            }
+        const result = await db.query(
+            'INSERT INTO users (email, password, user_type) VALUES ($1, $2, $3) RETURNING id',
+            [email, hashedPassword, 'Admin']
         );
+
+        res.status(201).json({
+            message: 'Admin created successfully!',
+            adminId: result.rows[0].id
+        });
     } catch (error) {
+        if (error.constraint === 'users_email_key') {
+            return res.status(400).json({ error: 'Email already exists' });
+        }
+        console.error('Error creating admin:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// CHECK IF ANY ADMIN EXISTS (for initial setup)
-router.get('/check-admin-exists', (req, res) => {
-    db.get(
-        "SELECT COUNT(*) as count FROM users WHERE user_type = 'Admin'",
-        [],
-        (err, result) => {
-            if (err) {
-                return res.status(500).json({ error: err.message });
-            }
-            res.json({ adminExists: result.count > 0 });
-        }
-    );
+// CHECK IF ADMIN EXISTS
+router.get('/check-admin-exists', async (req, res) => {
+    try {
+        const result = await db.query("SELECT COUNT(*) FROM users WHERE user_type = 'Admin'");
+        const count = parseInt(result.rows[0].count);
+        res.json({ adminExists: count > 0 });
+    } catch (error) {
+        console.error('Error checking admin:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 module.exports = router;

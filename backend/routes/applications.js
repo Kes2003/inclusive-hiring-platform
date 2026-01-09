@@ -1,177 +1,174 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../database');
+const db = require('../database-pg');
 
-// APPLY FOR A JOB
-router.post('/', (req, res) => {
+// SUBMIT APPLICATION
+router.post('/', async (req, res) => {
     const { jobSeekerId, jobId } = req.body;
 
     if (!jobSeekerId || !jobId) {
-        return res.status(400).json({ error: 'Job seeker ID and job ID are required' });
+        return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Check if already applied
-    db.get(
-        'SELECT * FROM applications WHERE job_seeker_id = ? AND job_id = ?',
-        [jobSeekerId, jobId],
-        (err, existingApplication) => {
-            if (err) {
-                return res.status(500).json({ error: err.message });
-            }
+    try {
+        // Check if already applied
+        const checkResult = await db.query(
+            'SELECT * FROM applications WHERE job_seeker_id = $1 AND job_id = $2',
+            [jobSeekerId, jobId]
+        );
 
-            if (existingApplication) {
-                return res.status(400).json({ error: 'You have already applied to this job' });
-            }
-
-            // Create application
-            db.run(
-                'INSERT INTO applications (job_seeker_id, job_id) VALUES (?, ?)',
-                [jobSeekerId, jobId],
-                function (err) {
-                    if (err) {
-                        return res.status(500).json({ error: err.message });
-                    }
-
-                    res.status(201).json({
-                        message: 'Application submitted successfully!',
-                        applicationId: this.lastID
-                    });
-                }
-            );
+        if (checkResult.rows.length > 0) {
+            return res.status(400).json({ error: 'You have already applied to this job' });
         }
-    );
+
+        // Insert application
+        const result = await db.query(
+            'INSERT INTO applications (job_seeker_id, job_id) VALUES ($1, $2) RETURNING *',
+            [jobSeekerId, jobId]
+        );
+
+        res.status(201).json({
+            message: 'Application submitted successfully!',
+            application: result.rows[0]
+        });
+    } catch (error) {
+        console.error('Error submitting application:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
-// GET APPLICATIONS FOR A JOB SEEKER
-router.get('/job-seeker/:jobSeekerId', (req, res) => {
+// GET JOB SEEKER'S APPLICATIONS
+router.get('/job-seeker/:jobSeekerId', async (req, res) => {
     const { jobSeekerId } = req.params;
 
-    const query = `
-    SELECT 
-      applications.*,
-      jobs.title as job_title,
-      jobs.location,
-      jobs.job_type,
-      jobs.salary,
-      employers.company_name
-    FROM applications
-    JOIN jobs ON applications.job_id = jobs.id
-    JOIN employers ON jobs.employer_id = employers.id
-    WHERE applications.job_seeker_id = ?
-    ORDER BY applications.applied_at DESC
-  `;
+    try {
+        const result = await db.query(`
+      SELECT 
+        applications.*,
+        jobs.title as job_title,
+        jobs.location,
+        jobs.salary,
+        employers.company_name
+      FROM applications
+      JOIN jobs ON applications.job_id = jobs.id
+      JOIN employers ON jobs.employer_id = employers.id
+      WHERE applications.job_seeker_id = $1
+      ORDER BY applications.applied_at DESC
+    `, [jobSeekerId]);
 
-    db.all(query, [jobSeekerId], (err, applications) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        res.json({ applications });
-    });
+        res.json({ applications: result.rows });
+    } catch (error) {
+        console.error('Error fetching applications:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
-// GET APPLICATIONS FOR A JOB (for employers)
-router.get('/job/:jobId', (req, res) => {
+// GET APPLICATIONS FOR A JOB
+router.get('/job/:jobId', async (req, res) => {
     const { jobId } = req.params;
 
-    const query = `
-    SELECT 
-      applications.*,
-      job_seekers.full_name,
-      job_seekers.phone,
-      job_seekers.skills,
-      job_seekers.disability_info,
-      users.email
-    FROM applications
-    JOIN job_seekers ON applications.job_seeker_id = job_seekers.id
-    JOIN users ON job_seekers.user_id = users.id
-    WHERE applications.job_id = ?
-    ORDER BY applications.applied_at DESC
-  `;
+    try {
+        const result = await db.query(`
+      SELECT 
+        applications.*,
+        job_seekers.full_name,
+        job_seekers.phone,
+        job_seekers.skills,
+        job_seekers.disability_info,
+        users.email
+      FROM applications
+      JOIN job_seekers ON applications.job_seeker_id = job_seekers.id
+      JOIN users ON job_seekers.user_id = users.id
+      WHERE applications.job_id = $1
+      ORDER BY applications.applied_at DESC
+    `, [jobId]);
 
-    db.all(query, [jobId], (err, applications) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        res.json({ applications });
-    });
+        res.json({ applications: result.rows });
+    } catch (error) {
+        console.error('Error fetching job applications:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
-// GET ALL APPLICATIONS FOR AN EMPLOYER
-router.get('/employer/:employerId', (req, res) => {
+// GET EMPLOYER'S APPLICATIONS
+router.get('/employer/:employerId', async (req, res) => {
     const { employerId } = req.params;
 
-    const query = `
-    SELECT 
-      applications.*,
-      jobs.title as job_title,
-      job_seekers.full_name,
-      job_seekers.phone,
-      job_seekers.skills,
-      job_seekers.disability_info,
-      users.email
-    FROM applications
-    JOIN jobs ON applications.job_id = jobs.id
-    JOIN job_seekers ON applications.job_seeker_id = job_seekers.id
-    JOIN users ON job_seekers.user_id = users.id
-    WHERE jobs.employer_id = ?
-    ORDER BY applications.applied_at DESC
-  `;
+    try {
+        const result = await db.query(`
+      SELECT 
+        applications.*,
+        jobs.title as job_title,
+        job_seekers.full_name,
+        job_seekers.phone,
+        job_seekers.skills,
+        job_seekers.disability_info,
+        users.email
+      FROM applications
+      JOIN jobs ON applications.job_id = jobs.id
+      JOIN job_seekers ON applications.job_seeker_id = job_seekers.id
+      JOIN users ON job_seekers.user_id = users.id
+      WHERE jobs.employer_id = $1
+      ORDER BY applications.applied_at DESC
+    `, [employerId]);
 
-    db.all(query, [employerId], (err, applications) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        res.json({ applications });
-    });
+        res.json({ applications: result.rows });
+    } catch (error) {
+        console.error('Error fetching employer applications:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
-// UPDATE APPLICATION STATUS (accept/reject)
-router.put('/:applicationId', (req, res) => {
+// UPDATE APPLICATION STATUS
+router.put('/:applicationId', async (req, res) => {
     const { applicationId } = req.params;
     const { status } = req.body;
 
-    if (!['Pending', 'Accepted', 'Rejected'].includes(status)) {
-        return res.status(400).json({ error: 'Invalid status' });
+    if (!status) {
+        return res.status(400).json({ error: 'Status is required' });
     }
 
-    db.run(
-        'UPDATE applications SET status = ? WHERE id = ?',
-        [status, applicationId],
-        function (err) {
-            if (err) {
-                return res.status(500).json({ error: err.message });
-            }
+    try {
+        const result = await db.query(
+            'UPDATE applications SET status = $1 WHERE id = $2 RETURNING *',
+            [status, applicationId]
+        );
 
-            if (this.changes === 0) {
-                return res.status(404).json({ error: 'Application not found' });
-            }
-
-            res.json({ message: 'Application status updated successfully!' });
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Application not found' });
         }
-    );
+
+        res.json({
+            message: 'Application status updated successfully!',
+            application: result.rows[0]
+        });
+    } catch (error) {
+        console.error('Error updating application:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
-// GET ALL APPLICATIONS (for admin)
-router.get('/all', (req, res) => {
-    const query = `
-    SELECT 
-      applications.*,
-      jobs.title as job_title,
-      job_seekers.full_name as job_seeker_name,
-      employers.company_name
-    FROM applications
-    JOIN jobs ON applications.job_id = jobs.id
-    JOIN job_seekers ON applications.job_seeker_id = job_seekers.id
-    JOIN employers ON jobs.employer_id = employers.id
-    ORDER BY applications.applied_at DESC
-  `;
+// GET ALL APPLICATIONS (ADMIN)
+router.get('/all', async (req, res) => {
+    try {
+        const result = await db.query(`
+      SELECT 
+        applications.*,
+        jobs.title as job_title,
+        job_seekers.full_name as job_seeker_name,
+        employers.company_name
+      FROM applications
+      JOIN jobs ON applications.job_id = jobs.id
+      JOIN job_seekers ON applications.job_seeker_id = job_seekers.id
+      JOIN employers ON jobs.employer_id = employers.id
+      ORDER BY applications.applied_at DESC
+    `);
 
-    db.all(query, [], (err, applications) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        res.json({ applications });
-    });
+        res.json({ applications: result.rows });
+    } catch (error) {
+        console.error('Error fetching all applications:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 module.exports = router;

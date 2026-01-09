@@ -1,7 +1,7 @@
 // Import required packages
 const express = require('express');
 const cors = require('cors');
-const db = require('./database');
+const db = require('./database-pg');
 
 // Import routes
 const authRoutes = require('./routes/auth');
