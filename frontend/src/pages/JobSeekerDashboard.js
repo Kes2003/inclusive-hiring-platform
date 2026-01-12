@@ -25,7 +25,7 @@ function JobSeekerDashboard() {
                 setJobs(jobsData);
 
                 // Get job seeker profile to get the actual job_seeker_id
-                const profileResponse = await fetch(`http://localhost:5000/api/auth/profile/${userId}`);
+                const profileResponse = await fetch(`https://inclusive-hiring-platform.onrender.com/api/auth/profile/${userId}`);
                 const profileData = await profileResponse.json();
 
                 if (profileData.profile && profileData.profile.id) {
