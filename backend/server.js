@@ -26,17 +26,17 @@ app.get('/', (req, res) => {
 });
 
 // Test database connection route
-app.get('/api/test-db', (req, res) => {
-    db.all('SELECT name FROM sqlite_master WHERE type="table"', [], (err, tables) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-        res.json({
-            message: 'Database connected successfully!',
-            tables: tables
-        });
-    });
-});
+//app.get('/api/test-db', (req, res) => {
+//    db.all('SELECT name FROM sqlite_master WHERE type="table"', [], (err, tables) => {
+//        if (err) {
+   //         return res.status(500).json({ error: err.message });
+   //     }
+   //     res.json({
+   //         message: 'Database connected successfully!',
+   //         tables: tables
+ //       });
+ //   });
+//});
 
 // API Routes
 app.use('/api/auth', authRoutes);
@@ -46,7 +46,7 @@ app.use('/api/admin', adminRoutes);
 
 // Start the server
 app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+    console.log(`Server is running on 'https://inclusive-hiring-platform.onrender.com/api'`);
     console.log('API endpoints available:');
     console.log('- POST /api/auth/signup');
     console.log('- POST /api/auth/login');
