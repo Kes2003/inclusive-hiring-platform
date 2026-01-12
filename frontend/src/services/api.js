@@ -1,5 +1,5 @@
 // Base API URL
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_URL = process.env.REACT_APP_API_URL || 'https://inclusive-hiring-platform.onrender.com/api';
 
 // Helper function to get auth token from localStorage
 const getAuthToken = () => {
