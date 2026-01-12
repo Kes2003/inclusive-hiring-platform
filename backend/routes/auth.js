@@ -1,3 +1,11 @@
+const express = require('express');
+const router = express.Router();
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const db = require('../database-pg');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+
 // SIGNUP ROUTE with detailed logging
 router.post('/signup', async (req, res) => {
     const { email, password, userType, fullName, phone, skills, disabilityInfo, companyName, companySize, industry } = req.body;
@@ -77,6 +85,53 @@ router.post('/signup', async (req, res) => {
     }
 });
 
+// LOGIN ROUTE
+router.post('/login', async (req, res) => {
+    const { email, password, userType } = req.body;
+
+    if (!email || !password || !userType) {
+        return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    try {
+        const result = await db.query(
+            'SELECT * FROM users WHERE email = $1 AND user_type = $2',
+            [email, userType]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        const user = result.rows[0];
+
+        // Compare password
+        const isValidPassword = await bcrypt.compare(password, user.password);
+
+        if (!isValidPassword) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        // Generate JWT token
+        const token = jwt.sign(
+            { userId: user.id, userType: user.user_type },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        res.json({
+            message: 'Login successful!',
+            token,
+            userId: user.id,
+            userType: user.user_type
+        });
+
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // GET USER PROFILE with detailed logging
 router.get('/profile/:userId', async (req, res) => {
     const { userId } = req.params;
@@ -135,3 +190,5 @@ router.get('/profile/:userId', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
+module.exports = router;
